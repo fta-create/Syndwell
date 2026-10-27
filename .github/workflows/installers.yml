@@ -1,0 +1,92 @@
+name: Build downloadable installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x64
+            bundles: nsis
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos-arm64
+            bundles: dmg
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+            platform: macos-x64
+            bundles: dmg
+          - name: Linux Debian/Ubuntu x64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x64
+            bundles: deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install pinned Rust toolchain and target
+        shell: bash
+        run: rustup show active-toolchain && rustup target add ${{ matrix.target }}
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - name: Check release version
+        run: node scripts/check-release-version.mjs
+      - name: Test frontend and native core
+        run: npm test && cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
+      - name: Build installer
+        run: npm run tauri build -- --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Collect installer and SHA-256 checksum
+        run: node scripts/collect-installers.mjs ${{ matrix.platform }} src-tauri/target/${{ matrix.target }}/release/bundle installers
+      - uses: actions/upload-artifact@v4
+        with:
+          name: syndwell-${{ matrix.platform }}
+          path: installers/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    name: Prepare draft GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: syndwell-*
+          path: installers
+          merge-multiple: true
+      - name: Create draft and upload installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease --title "Syndwell $RELEASE_TAG" --notes-file docs/RELEASE_NOTES.md
+          gh release upload "$RELEASE_TAG" installers/* --repo "$GITHUB_REPOSITORY"

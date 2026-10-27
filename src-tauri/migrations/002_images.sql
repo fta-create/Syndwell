@@ -1,0 +1,2 @@
+CREATE TABLE images(article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,url TEXT NOT NULL,mime TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(article_id,url));
+PRAGMA user_version=2;

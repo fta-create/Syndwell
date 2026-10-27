@@ -84,3 +84,7 @@ Current deliberate boundaries: no multi-device sync, enclosure/podcast playback,
 ## License
 
 [GNU General Public License v3.0 or later](LICENSE). Existing license text is preserved. Contributions are welcome; keep privacy, offline usability, accessibility, and free access central to every change.
+
+## Downloadable releases
+
+The **Build downloadable installers** GitHub Actions workflow builds Windows x64 `.exe`, macOS Apple Silicon/Intel `.dmg`, and Linux x64 `.deb` installers with SHA-256 checksums. Manual runs expose temporary build artifacts; a matching version tag prepares a draft prerelease for review. See [publishing installers](docs/RELEASING.md) for the steps, signing limitations and publication controls.
